@@ -37,9 +37,11 @@ with st.sidebar:
     preview_max = st.slider("プレビュー最大辺(px)", 256, 4096, 1024, 128)
     block = st.selectbox("タイル書き出しブロックサイズ", [256, 512, 1024], index=1)
 
+
 uploaded = st.file_uploader(
     "画像をアップロード（.tif/.tiff/.jpg/.jpeg/.png）",
-    type=["tif", "tiff", "jpg", "jpeg", "png"]
+    type=["tif", "tiff", "jpg", "jpeg", "png"],
+    accept_multiple_files=False
 )
 
 # --------------- Utils ---------------
@@ -163,16 +165,28 @@ if uploaded is None:
     st.info("👆 最初に画像をアップロードしてください。")
     st.stop()
 
+
 filename = uploaded.name
 is_tiff = infer_is_tiff(filename)
 is_jpeg = infer_is_jpeg(filename)
+
+# 统一取得上传文件的完整字节（避免 read() 指针空读）
+data = uploaded.getvalue()
+if not data:
+    st.error("アップロードに失敗しました。もう一度お試しください。")
+    st.stop()
+
+# 可选：显示一下大小，便于排错
+st.caption(f"ファイル: {filename} / サイズ: {len(data)/1024:.1f} KB")
+
+
 
 # ---- A: GeoTIFF/TIFF（地理参照） ----
 if is_tiff:
     st.subheader("🗺 GeoTIFF/TIFF")
     try:
         # 入力はバイトから開く（読み取りはウィンドウ単位なのでOK）
-        with rasterio.MemoryFile(uploaded.read()) as mem:
+        with rasterio.MemoryFile(data) as mem:
             with mem.open() as src:
                 h, w, count = src.height, src.width, src.count
                 bands_to_read = min(3, count)
@@ -264,7 +278,7 @@ if is_tiff:
 
                 # ダウンロード：ファイルを読み込んで渡す（巨大配列を常駐させない）
                 with open(tmp_out_path, "rb") as f:
-                    st.download_button("⬇️ 変換結果をダウンロード（GeoTIFF: float32）",
+                    st.download_button("⬇️ ダウンロード",
                                        data=f.read(),
                                        file_name=Path(filename).stem + f"_{color_space}_float32.tif",
                                        mime="image/tiff")
@@ -276,7 +290,7 @@ if is_tiff:
 else:
     st.subheader("🧭 ")
     try:
-        src_bytes = uploaded.read()
+        src_bytes = data
         pil = Image.open(io.BytesIO(src_bytes)).convert("RGB")
         rgb = np.array(pil)
 
@@ -344,6 +358,7 @@ else:
 
     except Exception as e:
         st.exception(e)
+
 
 
 
