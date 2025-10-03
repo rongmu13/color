@@ -247,3 +247,11 @@ else:
         exif_ok = False
         if infer_is_jpeg(filename) and HAS_PIEXIF:
             exif_ok = copy_exif_jpeg(src_bytes, jpg_io)
+        label = "⬇️ JPEG（EXIF/GPS を可能なら保持）"
+        if infer_is_jpeg(filename): label += " ✅EXIFコピー済" if exif_ok else " ⚠EXIFコピー不可"
+        st.download_button(label, data=jpg_io.getvalue(),
+                           file_name=Path(filename).stem + f"_{color_space}.jpg", mime="image/jpeg")
+
+        st.info("解析用の数値は GeoTIFF（特に LAB 実数 float32）を使ってください。PNG/JPEG は可視化用途です。")
+    except Exception as e:
+        st.exception(e)
