@@ -27,8 +27,16 @@ from rasterio.windows import Window
 from rasterio.enums import Resampling
 from rasterio.transform import Affine, from_origin
 
-# 真实 LAB 转换
-from skimage.color import rgb2lab
+def rgb_to_lab_real_opencv(rgb):
+    """
+    输入: HxWx3 的 RGB，任意 dtype
+    输出: float32 的 LAB（L[0..100], a/b[-127..127]）
+    """
+    # 归一化到 float32 的 0..1（你已有 to_rgb01，可直接复用）
+    rgb01 = to_rgb01(rgb).astype(np.float32)
+    lab = cv2.cvtColor(rgb01, cv2.COLOR_RGB2LAB).astype(np.float32)
+    return lab
+
 
 # ---------------------------
 # 基本設定（页面设置）
@@ -234,7 +242,7 @@ if is_tiff:
                             if color_space == "LAB" and lab_real:
                                 # 真实 LAB：RGB→[0,1]→rgb2lab→float32
                                 rgb01 = to_rgb01(arr)
-                                out_block = rgb2lab(rgb01).astype(np.float32)
+                                out_block = rgb_to_lab_real_opencv(arr)  .astype(np.float32)
                             else:
                                 # 原有 uint8 流程（用于非实数LAB或其他色彩空间）
                                 if enable_8bit_scale:
@@ -316,7 +324,7 @@ else:
         lab_f32 = None
         if color_space == "LAB" and lab_real:
             rgb01 = to_rgb01(rgb)
-            lab_f32 = rgb2lab(rgb01).astype(np.float32)
+            lab_f32 = rgb_to_lab_real_opencv(rgb).astype(np.float32)
 
             profile = {
                 "driver": "GTiff",
@@ -401,3 +409,4 @@ else:
         st.error(f"エラーが発生しました：{e}")
 
 st.caption("本アプリは研究・教育用です。")
+
