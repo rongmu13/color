@@ -4,3 +4,4 @@ opencv-python-headless
 Pillow
 piexif
 rasterio
+scikit-image==0.24.0
