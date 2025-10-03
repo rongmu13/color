@@ -215,7 +215,7 @@ if is_tiff:
                 out_bytes = out_mem.read()
                 out_name = Path(filename).stem + f"_{color_space}.tif"
                 st.download_button(
-                    "⬇️ 変換結果をダウンロード（GeoTIFF／投影・タグ保持）",
+                    "⬇️ 変換結果をダウンロード",
                     data=out_bytes,
                     file_name=out_name,
                     mime="image/tiff"
@@ -274,5 +274,6 @@ else:
 st.caption(
     "本アプリは研究・教育用です。"
 )
+
 
 
