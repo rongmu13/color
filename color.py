@@ -222,7 +222,7 @@ if is_tiff:
                 scale = max(preview_ds.width, preview_ds.height) / max(preview_max, 1)
                 scale = max(scale, 1.0)
                 preview = preview_ds.read(
-                    out_indexes=list(range(1, out_channels + 1)),
+                    indexes=list(range(1, out_channels + 1)),
                     out_shape=(
                         out_channels,
                         int(preview_ds.height / scale),
@@ -289,3 +289,4 @@ else:
             "如果需要“带 GPS 的标准地理影像容器”，建议把源数据保存为 GeoTIFF 再处理。")
 
 st.caption("小贴士：色彩空间的像素值与人眼直观颜色不是一回事；转换后图像用于分析/特征提取最合适。")
+
