@@ -1,0 +1,6 @@
+streamlit>=1.37.0
+numpy
+opencv-python-headless
+Pillow
+piexif
+rasterio
