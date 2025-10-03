@@ -1,6 +1,3 @@
-# main/color.py —— RGB → 多色空間：すべて実数（float32）GeoTIFF 出力 / No skimage
-# Author: Shinshu Univ. R.Y.  |  研究・教育用途
-# 注：コード内コメントは中国語のままでも、画面表示はすべて日本語です。
 
 import io
 from pathlib import Path
@@ -22,8 +19,8 @@ except Exception:
     HAS_PIEXIF = False
 
 # ---------------- UI ----------------
-st.set_page_config(page_title="RGB → 色空間変換（全て実数）", layout="wide")
-st.title("RGB → 色空間変換（全て実数 float32 GeoTIFF）")
+st.set_page_config(page_title="RGB → 色空間変換 Shinshu Univ. R.Y.", layout="wide")
+st.title("色空間変換 Shinshu Univ. R.Y.")
 
 with st.sidebar:
     st.header("⚙️ 設定")
@@ -300,3 +297,4 @@ else:
         st.info("ℹ️ 数値解析は上の GeoTIFF（float32）をご利用ください。PNG/JPEG は表示用です。")
     except Exception as e:
         st.exception(e)
+
