@@ -1,10 +1,5 @@
 streamlit>=1.37.0
 numpy==1.26.4
-scipy==1.11.4
-imageio==2.34.0
-tifffile==2024.2.12
-networkx==3.2.1
-scikit-image==0.24.0
 opencv-python-headless==4.10.0.84
 Pillow>=10.3.0
 piexif>=1.1.3
