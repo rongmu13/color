@@ -135,7 +135,7 @@ is_jpeg = infer_is_jpeg(filename)
 
 # ===== A：GeoTIFF/TIFF（地理参照あり） =====
 if is_tiff:
-    st.subheader("🗺 GeoTIFF/TIFF 処理（ブロック単位でメモリ節約）")
+    st.subheader("🗺 GeoTIFF/TIFF 処理")
     try:
         with rasterio.MemoryFile(uploaded.read()) as memfile:
             with memfile.open() as src:
@@ -274,6 +274,7 @@ else:
 st.caption(
     "本アプリは研究・教育用です。"
 )
+
 
 
 
