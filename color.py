@@ -25,13 +25,13 @@ st.title("色空間変換 Shinshu Univ. R.Y.")
 with st.sidebar:
     st.header("⚙️ 設定")
     color_space = st.selectbox(
-        "変換先の色空間（すべて実数で出力）",
+        "変換先の色空間",
         ["LAB", "HSV", "HLS", "YCrCb", "XYZ", "LUV", "Gray"],
         index=0
     )
     # プレビュー向けの見やすさ調整（出力値は変更しない）
-    p_low = st.slider("プレビュー下位パーセンタイル（XYZ/LUV等に推奨）", 0.0, 10.0, 2.0, 0.5)
-    p_high = st.slider("プレビュー上位パーセンタイル（XYZ/LUV等に推奨）", 90.0, 100.0, 98.0, 0.5)
+    p_low = st.slider("プレビュー下位パーセンタイル（XYZ/LUV等に）", 0.0, 10.0, 2.0, 0.5)
+    p_high = st.slider("プレビュー上位パーセンタイル（XYZ/LUV等に）", 90.0, 100.0, 98.0, 0.5)
     preview_max = st.slider("プレビュー最大辺(px)", 256, 4096, 1024, 128)
 
 uploaded = st.file_uploader(
@@ -162,7 +162,7 @@ CONV = {
 
 # ---- A: GeoTIFF/TIFF ----
 if is_tiff:
-    st.subheader("🗺 GeoTIFF/TIFF（全チャンネル実数：float32 出力）")
+    st.subheader("🗺 GeoTIFF/TIFF")
     try:
         with rasterio.MemoryFile(uploaded.read()) as mem:
             with mem.open() as src:
@@ -276,7 +276,7 @@ else:
         with mem.open(**profile) as ds:
             for i in range(real.shape[2]):
                 ds.write(real[:,:,i], i+1)
-        st.download_button("⬇️ GeoTIFF（float32 実数）をダウンロード",
+        st.download_button("⬇️ ダウンロード",
                            data=mem.read(),
                            file_name=Path(filename).stem + f"_{color_space}_float32.tif",
                            mime="image/tiff")
@@ -297,4 +297,5 @@ else:
         st.info("ℹ️ 数値解析は上の GeoTIFF（float32）をご利用ください。PNG/JPEG は表示用です。")
     except Exception as e:
         st.exception(e)
+
 
