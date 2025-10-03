@@ -328,7 +328,7 @@ else:
         gc.collect()
 
         with open(tmp_gt_path, "rb") as f:
-            st.download_button("⬇️ ダウンロード",
+            st.download_button("⬇️ GeoTIFF（float32 実数）をダウンロード",
                                data=f.read(),
                                file_name=Path(filename).stem + f"_{color_space}_float32.tif",
                                mime="image/tiff")
@@ -336,7 +336,7 @@ else:
         # PNG / JPEG（プレビュー画像）
         png_io = io.BytesIO()
         Image.fromarray(prev_u8).save(png_io, format="PNG", compress_level=6)
-        st.download_button("⬇️ ダウンロード",
+        st.download_button("⬇️ PNG（プレビュー）をダウンロード",
                            data=png_io.getvalue(),
                            file_name=Path(filename).stem + f"_{color_space}_preview.png",
                            mime="image/png")
@@ -358,6 +358,7 @@ else:
 
     except Exception as e:
         st.exception(e)
+
 
 
 
