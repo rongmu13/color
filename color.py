@@ -1,4 +1,4 @@
-# app.py —— すべて実数値（float32）で出力する版
+# app.py —— すべて実数値（float32）で出力 / OpenCV版（scikit-image不要）
 # UIは日本語、コメントは中国語
 import io
 from pathlib import Path
@@ -11,18 +11,14 @@ from rasterio.windows import Window
 from rasterio.enums import Resampling
 from rasterio.transform import Affine
 
-# skimage: 真实色彩空间转换
-from skimage.color import (
-    rgb2lab, rgb2hsv, rgb2xyz, rgb2luv, rgb2ycbcr, rgb2gray
-)
-import colorsys
+import cv2
 
 # ---------------------------
 # 基本設定（页面设置）
 # ---------------------------
-st.set_page_config(page_title="色空間変換 Shinshu Univ. R.Y.", layout="wide")
+st.set_page_config(page_title="RGB → 色空間変換（実数値出力）Shinshu Univ. R.Y.", layout="wide")
 
-st.title("RGB → 色空間変換 Shinshu Univ. R.Y.")
+st.title("RGB → 色空間変換（実数値出力）Shinshu Univ. R.Y.")
 st.caption(
     "RGB画像（GeoTIFF/TIFF/JPG/PNG）をアップロードし、右側で変換先の色空間を選択してください。"
     "変換結果は **float32 の GeoTIFF（実数値）** としてダウンロードできます。"
@@ -67,8 +63,14 @@ def ensure_hwc(rgb_like):
         rgb_like = np.transpose(rgb_like, (1, 2, 0))
     return rgb_like
 
-def _to01_float(rgb_any):
-    """任意 dtype 的 RGB 转 0..1 的 float32"""
+def infer_is_tiff(name: str) -> bool:
+    return name.lower().endswith((".tif", ".tiff"))
+
+def to_float01(rgb_any):
+    """
+    任意 dtype 的 RGB → float32 的 [0,1].
+    支持 uint8 / uint16 / float.
+    """
     arr = rgb_any.astype(np.float32)
     if rgb_any.dtype == np.uint16:
         arr /= 65535.0
@@ -76,50 +78,94 @@ def _to01_float(rgb_any):
         arr /= 255.0
     return np.clip(arr, 0.0, 1.0)
 
-def rgb2hls_np(rgb01):
-    """colorsys の HLS を使った逐像素转换，输出 H,L,S ∈ [0..1]"""
-    h, w, _ = rgb01.shape
-    out = np.empty_like(rgb01, dtype=np.float32)
-    flat_in = rgb01.reshape(-1, 3)
-    flat_out = out.reshape(-1, 3)
-    for i in range(flat_in.shape[0]):
-        r, g, b = flat_in[i]
-        h_, l_, s_ = colorsys.rgb_to_hls(float(r), float(g), float(b))
-        flat_out[i] = (h_, l_, s_)
-    return out
-
-def convert_colorspace_real(img_rgb_any, mode):
+def convert_colorspace_real_opencv(rgb_any, mode):
     """
-    真实值转换（所有模式都返回 float32）：
-      LAB:  L[0..100], a/b ≈ [-128..127]
-      HSV:  H,S,V ∈ [0..1]
-      HLS:  H,L,S ∈ [0..1]
-      XYZ:  X,Y,Z ∈ [0..1]（相対D65）
-      LUV:  L ∈ [0..100], u/v 为浮点（色域依赖）
-      YCrCb: skimage 定义为 [0..255] 浮点
-      Gray:  [0..1]（线性亮度）
+    使用 OpenCV，在 float32 输入下输出“真实值”（全部为 float32）：
+      输入：任意 dtype 的 RGB(HWC)，内部会归一到 [0,1]
+      输出（OpenCV 约定）：
+        LAB:  L[0..100], a/b ≈ [-128..127]
+        HSV:  H[0..360], S[0..1], V[0..1]
+        HLS:  H[0..360], L[0..1], S[0..1]
+        XYZ:  0..1
+        LUV:  L[0..100], u/v：浮点
+        YCrCb: 0..255（浮点）
+        Gray:  0..1
     """
-    rgb01 = _to01_float(img_rgb_any)
+    rgb01 = to_float01(rgb_any)  # HWC, float32, [0,1]
+    # OpenCV 需要 0..1 的 float32 输入
     if mode == "LAB":
-        return rgb2lab(rgb01).astype(np.float32)
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2Lab)
     elif mode == "HSV":
-        return rgb2hsv(rgb01).astype(np.float32)
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2HSV)  # H:0..360
     elif mode == "HLS":
-        return rgb2hls_np(rgb01).astype(np.float32)
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2HLS)  # H:0..360
     elif mode == "YCrCb":
-        return rgb2ycbcr(rgb01).astype(np.float32)
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2YCrCb)  # 0..255 浮点
     elif mode == "XYZ":
-        return rgb2xyz(rgb01).astype(np.float32)
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2XYZ)
     elif mode == "LUV":
-        return rgb2luv(rgb01).astype(np.float32)
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2Luv)
     elif mode == "Gray":
-        g = rgb2gray(rgb01).astype(np.float32)
-        return g[..., None]
+        out = cv2.cvtColor(rgb01, cv2.COLOR_RGB2GRAY)[..., None]
     else:
         raise ValueError("Unsupported color space")
+    return out.astype(np.float32)
 
-def infer_is_tiff(name: str) -> bool:
-    return name.lower().endswith((".tif", ".tiff"))
+def write_float32_geotiff_from_array(arr_float, out_name, crs, transform):
+    """
+    把 (H,W,C或1) 的 float32 数组写成 GeoTIFF。
+    crs/transform 可为 None（无地理参照）。
+    """
+    if arr_float.ndim == 2:
+        arr_float = arr_float[..., None]
+    h, w, c = arr_float.shape
+    profile = {
+        "driver": "GTiff",
+        "height": h,
+        "width": w,
+        "count": c,
+        "dtype": "float32",
+        "crs": crs,
+        "transform": transform if transform is not None else Affine.translation(0, 0) * Affine.scale(1, 1),
+        "compress": "deflate",
+        "predictor": 3
+    }
+    mem = rasterio.MemoryFile()
+    with mem.open(**profile) as dst:
+        for i in range(c):
+            dst.write(arr_float[:, :, i], i+1)
+    return mem
+
+def set_band_descriptions(ds, mode):
+    try:
+        if mode == "LAB":
+            ds.set_band_description(1, "L_0-100")
+            ds.set_band_description(2, "a_-128_127")
+            ds.set_band_description(3, "b_-128_127")
+        elif mode == "HSV":
+            ds.set_band_description(1, "H_0-360_deg")
+            ds.set_band_description(2, "S_0-1")
+            ds.set_band_description(3, "V_0-1")
+        elif mode == "HLS":
+            ds.set_band_description(1, "H_0-360_deg")
+            ds.set_band_description(2, "L_0-1")
+            ds.set_band_description(3, "S_0-1")
+        elif mode == "XYZ":
+            ds.set_band_description(1, "X_0-1")
+            ds.set_band_description(2, "Y_0-1")
+            ds.set_band_description(3, "Z_0-1")
+        elif mode == "LUV":
+            ds.set_band_description(1, "L_0-100")
+            ds.set_band_description(2, "u_float")
+            ds.set_band_description(3, "v_float")
+        elif mode == "YCrCb":
+            ds.set_band_description(1, "Y_0-255")
+            ds.set_band_description(2, "Cr_0-255")  # 注意 OpenCV 顺序为 YCrCb
+            ds.set_band_description(3, "Cb_0-255")
+        elif mode == "Gray":
+            ds.set_band_description(1, "Gray_0-1")
+    except Exception:
+        pass
 
 # ---------------------------
 # メイン処理（主逻辑）
@@ -139,74 +185,45 @@ if is_tiff:
             with memfile.open() as src:
                 h, w = src.height, src.width
                 count = src.count
-                profile = src.profile.copy()
+                crs = src.crs
+                transform = src.transform
                 tags_global = src.tags()
-
                 bands_to_read = min(3, count)
+
                 st.write(f"原画像サイズ：{w} × {h}／バンド数：{count}（変換に使用：先頭{bands_to_read}バンド）")
 
-                block_size = 1024
+                block = 1024
                 out_channels = 1 if color_space == "Gray" else 3
 
-                # 输出 float32
-                out_profile = profile.copy()
+                # 先写一个空的内存 GeoTIFF
+                out_profile = src.profile.copy()
                 out_profile.update({
                     "count": out_channels,
                     "dtype": "float32",
                     "compress": "deflate",
-                    "predictor": 3  # 浮点预测器
+                    "predictor": 3
                 })
-
                 out_mem = rasterio.MemoryFile()
                 with out_mem.open(**out_profile) as dst:
-                    for y in range(0, h, block_size):
-                        for x in range(0, w, block_size):
-                            win = Window(col_off=x, row_off=y,
-                                         width=min(block_size, w - x),
-                                         height=min(block_size, h - y))
-                            arr = src.read(indexes=list(range(1, bands_to_read + 1)), window=win)
+                    for y in range(0, h, block):
+                        for x in range(0, w, block):
+                            win = Window(x, y, min(block, w-x), min(block, h-y))
+                            arr = src.read(indexes=list(range(1, bands_to_read+1)), window=win)
                             arr = ensure_hwc(arr)
                             if arr.shape[2] < 3:
                                 pads = [arr[:, :, -1]] * (3 - arr.shape[2])
                                 arr = np.concatenate([arr] + [p[..., None] for p in pads], axis=2)
 
-                            out_block = convert_colorspace_real(arr, color_space)  # float32 真实值
+                            out_block = convert_colorspace_real_opencv(arr, color_space)  # float32
                             for ch in range(out_channels):
-                                dst.write(out_block[:, :, ch], indexes=ch + 1, window=win)
+                                dst.write(out_block[:, :, ch], ch+1, window=win)
 
-                    # 标签/地理参照
                     dst.update_tags(**tags_global)
-                    # Band description（便于在 QGIS 里识别）
-                    if color_space == "LAB":
-                        dst.set_band_description(1, "L_0-100")
-                        dst.set_band_description(2, "a_-128_127")
-                        dst.set_band_description(3, "b_-128_127")
-                    elif color_space == "HSV":
-                        dst.set_band_description(1, "H_0-1")
-                        dst.set_band_description(2, "S_0-1")
-                        dst.set_band_description(3, "V_0-1")
-                    elif color_space == "HLS":
-                        dst.set_band_description(1, "H_0-1")
-                        dst.set_band_description(2, "L_0-1")
-                        dst.set_band_description(3, "S_0-1")
-                    elif color_space == "XYZ":
-                        dst.set_band_description(1, "X_0-1")
-                        dst.set_band_description(2, "Y_0-1")
-                        dst.set_band_description(3, "Z_0-1")
-                    elif color_space == "LUV":
-                        dst.set_band_description(1, "L_0-100")
-                        dst.set_band_description(2, "u_float")
-                        dst.set_band_description(3, "v_float")
-                    elif color_space == "YCrCb":
-                        dst.set_band_description(1, "Y_0-255")
-                        dst.set_band_description(2, "Cb_0-255")
-                        dst.set_band_description(3, "Cr_0-255")
-                    elif color_space == "Gray":
-                        dst.set_band_description(1, "Gray_0-1")
+                    set_band_descriptions(dst, color_space)
 
-                # 预览（仅显示用：百分位拉伸到 8bit）
-                with out_mem.open() as preview_ds:
-                    prev = preview_ds.read(indexes=list(range(1, out_channels + 1)))
+                # 预览：仅显示用的拉伸
+                with out_mem.open() as prev_ds:
+                    prev = prev_ds.read(indexes=list(range(1, out_channels+1)))
                     prev = ensure_hwc(prev)
                     prev = percentile_scale_to_uint8(prev, p_low, p_high)
                     if prev.shape[2] == 1:
@@ -214,23 +231,18 @@ if is_tiff:
                     h0, w0 = prev.shape[:2]
                     scale = min(preview_max / max(h0, w0), 1.0)
                     if scale < 1.0:
-                        prev = (prev if prev.dtype == np.uint8 else prev.astype(np.uint8))
                         prev = cv2.resize(prev, (int(w0*scale), int(h0*scale)), interpolation=cv2.INTER_AREA)
                     st.image(prev, caption=f"プレビュー（{color_space} 実数値 → 表示用スケーリング）", use_container_width=True)
 
                 out_bytes = out_mem.read()
                 out_name = Path(filename).stem + f"_{color_space}_float32.tif"
-                st.download_button(
-                    "⬇️ 変換結果をダウンロード（float32 GeoTIFF）",
-                    data=out_bytes,
-                    file_name=out_name,
-                    mime="image/tiff"
-                )
+                st.download_button("⬇️ 変換結果をダウンロード（float32 GeoTIFF）",
+                                   data=out_bytes, file_name=out_name, mime="image/tiff")
         st.success("✅ 変換が完了しました。出力はすべて実数値（float32）の GeoTIFF です。")
     except Exception as e:
         st.error(f"エラーが発生しました：{e}")
 
-# ===== B：JPEG/PNG（EXIF/GPSは保持不能。実数値GeoTIFFで出力） =====
+# ===== B：JPEG/PNG（無地理参照。実数値 GeoTIFF で出力） =====
 else:
     st.subheader("🧭 JPEG/PNG 処理（実数値 float32 GeoTIFF で出力）")
     try:
@@ -238,9 +250,9 @@ else:
         pil = Image.open(io.BytesIO(src_bytes)).convert("RGB")
         rgb = np.array(pil)  # uint8
 
-        out_img = convert_colorspace_real(rgb, color_space)  # float32
+        out_img = convert_colorspace_real_opencv(rgb, color_space)  # float32
 
-        # 预览（仅显示用）
+        # 预览（仅显示）
         prev = percentile_scale_to_uint8(out_img, p_low, p_high)
         if prev.ndim == 2:
             prev = prev[..., None]
@@ -253,54 +265,9 @@ else:
         st.image(prev, caption=f"プレビュー（{color_space} 実数値 → 表示用スケーリング）", use_container_width=True)
 
         # 写成 float32 GeoTIFF（无地理参照）
-        h, w = out_img.shape[:2]
-        out_channels = 1 if out_img.ndim == 2 else out_img.shape[2]
-        profile = {
-            "driver": "GTiff",
-            "height": h,
-            "width": w,
-            "count": out_channels,
-            "dtype": "float32",
-            "crs": None,
-            "transform": Affine.translation(0, 0) * Affine.scale(1, 1),
-            "compress": "deflate",
-            "predictor": 3
-        }
-        mem = rasterio.MemoryFile()
-        with mem.open(**profile) as dst:
-            if out_channels == 1:
-                dst.write(out_img.astype(np.float32), 1)
-                if color_space == "Gray":
-                    dst.set_band_description(1, "Gray_0-1")
-            else:
-                for ch in range(out_channels):
-                    dst.write(out_img[:, :, ch].astype(np.float32), ch+1)
-                # Band 描述
-                if color_space == "LAB":
-                    dst.set_band_description(1, "L_0-100")
-                    dst.set_band_description(2, "a_-128_127")
-                    dst.set_band_description(3, "b_-128_127")
-                elif color_space == "HSV":
-                    dst.set_band_description(1, "H_0-1")
-                    dst.set_band_description(2, "S_0-1")
-                    dst.set_band_description(3, "V_0-1")
-                elif color_space == "HLS":
-                    dst.set_band_description(1, "H_0-1")
-                    dst.set_band_description(2, "L_0-1")
-                    dst.set_band_description(3, "S_0-1")
-                elif color_space == "XYZ":
-                    dst.set_band_description(1, "X_0-1")
-                    dst.set_band_description(2, "Y_0-1")
-                    dst.set_band_description(3, "Z_0-1")
-                elif color_space == "LUV":
-                    dst.set_band_description(1, "L_0-100")
-                    dst.set_band_description(2, "u_float")
-                    dst.set_band_description(3, "v_float")
-                elif color_space == "YCrCb":
-                    dst.set_band_description(1, "Y_0-255")
-                    dst.set_band_description(2, "Cb_0-255")
-                    dst.set_band_description(3, "Cr_0-255")
-
+        mem = write_float32_geotiff_from_array(out_img, "out.tif", crs=None, transform=None)
+        with mem.open() as ds:
+            set_band_descriptions(ds, color_space)
         out_bytes = mem.read()
         out_name = Path(filename).stem + f"_{color_space}_float32.tif"
         st.download_button("⬇️ 変換結果をダウンロード（float32 GeoTIFF）",
