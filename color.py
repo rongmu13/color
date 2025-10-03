@@ -22,13 +22,13 @@ except Exception:
     HAS_PIEXIF = False
 
 # ---------------- UI ----------------
-st.set_page_config(page_title="RGB → 色空間変換 Shinshu Univ. R.Y.", layout="wide")
-st.title("RGB → 色空間変換 Shinshu Univ. R.Y.")
+st.set_page_config(page_title="RGB → 色空間変換（全て実数）", layout="wide")
+st.title("RGB → 色空間変換（全て実数 float32 GeoTIFF）")
 
 with st.sidebar:
     st.header("⚙️ 設定")
     color_space = st.selectbox(
-        "変換先の色空間",
+        "変換先の色空間（すべて実数で出力）",
         ["LAB", "HSV", "HLS", "YCrCb", "XYZ", "LUV", "Gray"],
         index=0
     )
@@ -165,7 +165,7 @@ CONV = {
 
 # ---- A: GeoTIFF/TIFF ----
 if is_tiff:
-    st.subheader("🗺 GeoTIFF/TIFF")
+    st.subheader("🗺 GeoTIFF/TIFF（全チャンネル実数：float32 出力）")
     try:
         with rasterio.MemoryFile(uploaded.read()) as mem:
             with mem.open() as src:
@@ -249,7 +249,7 @@ if is_tiff:
 
                 out_bytes = out_mem.read()
                 out_name = Path(filename).stem + f"_{color_space}_float32.tif"
-                st.download_button("⬇️ 変換結果をダウンロード",
+                st.download_button("⬇️ 変換結果をダウンロード（GeoTIFF: float32）",
                                    data=out_bytes, file_name=out_name, mime="image/tiff")
         st.success("✅ 実数（float32）GeoTIFF を出力しました。")
     except Exception as e:
@@ -279,7 +279,7 @@ else:
         with mem.open(**profile) as ds:
             for i in range(real.shape[2]):
                 ds.write(real[:,:,i], i+1)
-        st.download_button("⬇️ダウンロード",
+        st.download_button("⬇️ GeoTIFF（float32 実数）をダウンロード",
                            data=mem.read(),
                            file_name=Path(filename).stem + f"_{color_space}_float32.tif",
                            mime="image/tiff")
