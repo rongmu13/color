@@ -1,7 +1,6 @@
-streamlit>=1.33
-numpy
-pillow
-opencv-python-headless
-rasterio
-scikit-image
-piexif
+streamlit==1.37.1
+numpy==1.26.4
+pillow==10.4.0
+opencv-python-headless==4.10.0.84
+rasterio==1.3.10
+piexif==1.1.3
